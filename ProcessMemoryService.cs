@@ -38,7 +38,9 @@ internal sealed class ProcessMemoryService : IDisposable
 
         while (address >= 0 && NativeMethods.VirtualQueryEx(_handle, (nint)address, out var info, infoSize) != 0)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+                break;
+
             var baseAddress = info.BaseAddress.ToInt64();
             var regionSize = checked((long)info.RegionSize);
 
@@ -56,9 +58,11 @@ internal sealed class ProcessMemoryService : IDisposable
         var reportTimer = Stopwatch.StartNew();
         progress?.Report(new ScanProgress(0, 0));
 
+        Console.WriteLine("address count " + totalBytes);
+
         foreach (var region in regions)
         {
-            ScanRegion(region.BaseAddress, region.Size, target, matches, cancellationToken, bytesProcessed =>
+            var completed = ScanRegion(region.BaseAddress, region.Size, target, matches, cancellationToken, bytesProcessed =>
             {
                 scannedBytes += bytesProcessed;
                 if (reportTimer.ElapsedMilliseconds >= 100)
@@ -68,7 +72,7 @@ internal sealed class ProcessMemoryService : IDisposable
                 }
             });
 
-            if (matches.Count >= MaxMatches)
+            if (!completed || matches.Count >= MaxMatches)
                 break;
         }
 
@@ -83,7 +87,9 @@ internal sealed class ProcessMemoryService : IDisposable
         var matches = new List<long>();
         foreach (var address in candidates)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            if (cancellationToken.IsCancellationRequested)
+                break;
+
             if (TryRead(address, target.Length, out var bytes) && bytes.AsSpan().SequenceEqual(target))
                 matches.Add(address);
         }
@@ -104,12 +110,14 @@ internal sealed class ProcessMemoryService : IDisposable
             throw new Win32Exception(Marshal.GetLastWin32Error(), $"Could not write to address 0x{address:X}.");
     }
 
-    private void ScanRegion(long baseAddress, long regionSize, byte[] target, List<long> matches, CancellationToken token, Action<int> reportBytesProcessed)
+    private bool ScanRegion(long baseAddress, long regionSize, byte[] target, List<long> matches, CancellationToken token, Action<int> reportBytesProcessed)
     {
         var overlap = Math.Max(0, target.Length - 1);
         for (long offset = 0; offset < regionSize; offset += ChunkSize - overlap)
         {
-            token.ThrowIfCancellationRequested();
+            if (token.IsCancellationRequested)
+                return false;
+
             var requested = (int)Math.Min(ChunkSize, regionSize - offset);
             var newlyCovered = (int)Math.Min(ChunkSize - overlap, regionSize - offset);
             var buffer = new byte[requested];
@@ -128,12 +136,14 @@ internal sealed class ProcessMemoryService : IDisposable
                     if (matches.Count >= MaxMatches)
                     {
                         reportBytesProcessed(newlyCovered);
-                        return;
+                        return true;
                     }
                 }
             }
             reportBytesProcessed(newlyCovered);
         }
+
+        return true;
     }
 
     private static double GetPercentage(long completed, long total) =>
@@ -142,12 +152,12 @@ internal sealed class ProcessMemoryService : IDisposable
     private static bool IsReadable(NativeMethods.MemoryBasicInformation info)
     {
         const NativeMethods.MemoryProtection readable =
-            NativeMethods.MemoryProtection.ReadOnly |
+            //NativeMethods.MemoryProtection.ReadOnly |
             NativeMethods.MemoryProtection.ReadWrite |
-            NativeMethods.MemoryProtection.WriteCopy |
-            NativeMethods.MemoryProtection.ExecuteRead |
-            NativeMethods.MemoryProtection.ExecuteReadWrite |
-            NativeMethods.MemoryProtection.ExecuteWriteCopy;
+            //NativeMethods.MemoryProtection.WriteCopy |
+            //NativeMethods.MemoryProtection.ExecuteRead |
+            NativeMethods.MemoryProtection.ExecuteReadWrite;
+            //NativeMethods.MemoryProtection.ExecuteWriteCopy;
 
         return info.State == NativeMethods.MemoryState.Commit &&
                (info.Protect & readable) != 0 &&

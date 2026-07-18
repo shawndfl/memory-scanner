@@ -134,7 +134,9 @@ public partial class MainWindow : Window
             _candidateAddresses = await Task.Run(() => scan(_scanCancellation.Token));
             RefreshDisplayedResults();
             NextScanButton.IsEnabled = _candidateAddresses.Count > 0;
-            StatusTextBlock.Text = _candidateAddresses.Count > DisplayLimit
+            StatusTextBlock.Text = _scanCancellation.IsCancellationRequested
+                ? $"Scan cancelled — kept {_candidateAddresses.Count:N0} matches"
+                : _candidateAddresses.Count > DisplayLimit
                 ? $"Found {_candidateAddresses.Count:N0} matches (showing first {DisplayLimit:N0})"
                 : $"Found {_candidateAddresses.Count:N0} matches";
         }

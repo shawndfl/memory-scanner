@@ -6,9 +6,13 @@ internal readonly record struct ScanProgress(int MatchCount, double Percentage);
 
 public enum ValueTypeKind
 {
+    uByte,
     Byte,
+    UShort,
     Short,
+    UInt32,
     Int32,
+    ULong,
     Int64,
     Float,
     Double,
@@ -39,9 +43,13 @@ internal static class ValueConverter
 {
     internal static int SizeOf(ValueTypeKind type) => type switch
     {
+        ValueTypeKind.uByte => sizeof(byte),
         ValueTypeKind.Byte => sizeof(byte),
+        ValueTypeKind.UShort => sizeof(short),
         ValueTypeKind.Short => sizeof(short),
+        ValueTypeKind.UInt32 => sizeof(int),
         ValueTypeKind.Int32 => sizeof(int),
+        ValueTypeKind.ULong => sizeof(long),
         ValueTypeKind.Int64 => sizeof(long),
         ValueTypeKind.Float => sizeof(float),
         ValueTypeKind.Double => sizeof(double),
@@ -50,9 +58,13 @@ internal static class ValueConverter
 
     internal static byte[] Parse(string text, ValueTypeKind type) => type switch
     {
+        ValueTypeKind.uByte => [byte.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)],
         ValueTypeKind.Byte => [byte.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)],
+        ValueTypeKind.UShort => BitConverter.GetBytes(ushort.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)),
         ValueTypeKind.Short => BitConverter.GetBytes(short.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)),
+        ValueTypeKind.UInt32 => BitConverter.GetBytes(uint.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)),
         ValueTypeKind.Int32 => BitConverter.GetBytes(int.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)),
+        ValueTypeKind.ULong => BitConverter.GetBytes(ulong.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)),
         ValueTypeKind.Int64 => BitConverter.GetBytes(long.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)),
         ValueTypeKind.Float => BitConverter.GetBytes(float.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture)),
         ValueTypeKind.Double => BitConverter.GetBytes(double.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture)),
@@ -61,9 +73,13 @@ internal static class ValueConverter
 
     internal static string Format(ReadOnlySpan<byte> bytes, ValueTypeKind type) => type switch
     {
+        ValueTypeKind.uByte => bytes[0].ToString(CultureInfo.InvariantCulture),
         ValueTypeKind.Byte => bytes[0].ToString(CultureInfo.InvariantCulture),
+        ValueTypeKind.UShort => BitConverter.ToUInt16(bytes).ToString(CultureInfo.InvariantCulture),
         ValueTypeKind.Short => BitConverter.ToInt16(bytes).ToString(CultureInfo.InvariantCulture),
+        ValueTypeKind.UInt32 => BitConverter.ToUInt32(bytes).ToString(CultureInfo.InvariantCulture),
         ValueTypeKind.Int32 => BitConverter.ToInt32(bytes).ToString(CultureInfo.InvariantCulture),
+        ValueTypeKind.ULong => BitConverter.ToUInt64(bytes).ToString(CultureInfo.InvariantCulture),
         ValueTypeKind.Int64 => BitConverter.ToInt64(bytes).ToString(CultureInfo.InvariantCulture),
         ValueTypeKind.Float => BitConverter.ToSingle(bytes).ToString("G9", CultureInfo.InvariantCulture),
         ValueTypeKind.Double => BitConverter.ToDouble(bytes).ToString("G17", CultureInfo.InvariantCulture),
