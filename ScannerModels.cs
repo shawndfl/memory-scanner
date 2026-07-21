@@ -18,6 +18,12 @@ public enum ValueTypeKind
     Double,
 }
 
+public enum Endianness
+{
+    LittleEndian,
+    BigEndian,
+}
+
 public sealed record ProcessItem(int Id, string Name)
 {
     public string DisplayName => $"{Name} ({Id})";
@@ -36,6 +42,7 @@ public sealed class SavedAddress
     public string ProcessName { get; set; } = string.Empty;
     public long Address { get; set; }
     public ValueTypeKind ValueType { get; set; }
+    public Endianness Endianness { get; set; }
     public string AddressText => $"0x{Address:X}";
 }
 
@@ -56,33 +63,52 @@ internal static class ValueConverter
         _ => throw new ArgumentOutOfRangeException(nameof(type)),
     };
 
-    internal static byte[] Parse(string text, ValueTypeKind type) => type switch
+    internal static byte[] Parse(string text, ValueTypeKind type, Endianness endianness)
     {
-        ValueTypeKind.uByte => [byte.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)],
-        ValueTypeKind.Byte => [byte.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)],
-        ValueTypeKind.UShort => BitConverter.GetBytes(ushort.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)),
-        ValueTypeKind.Short => BitConverter.GetBytes(short.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)),
-        ValueTypeKind.UInt32 => BitConverter.GetBytes(uint.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)),
-        ValueTypeKind.Int32 => BitConverter.GetBytes(int.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)),
-        ValueTypeKind.ULong => BitConverter.GetBytes(ulong.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)),
-        ValueTypeKind.Int64 => BitConverter.GetBytes(long.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)),
-        ValueTypeKind.Float => BitConverter.GetBytes(float.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture)),
-        ValueTypeKind.Double => BitConverter.GetBytes(double.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture)),
-        _ => throw new ArgumentOutOfRangeException(nameof(type)),
-    };
+        var bytes = type switch
+        {
+            ValueTypeKind.uByte => [byte.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)],
+            ValueTypeKind.Byte => [byte.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)],
+            ValueTypeKind.UShort => BitConverter.GetBytes(ushort.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)),
+            ValueTypeKind.Short => BitConverter.GetBytes(short.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)),
+            ValueTypeKind.UInt32 => BitConverter.GetBytes(uint.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)),
+            ValueTypeKind.Int32 => BitConverter.GetBytes(int.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)),
+            ValueTypeKind.ULong => BitConverter.GetBytes(ulong.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)),
+            ValueTypeKind.Int64 => BitConverter.GetBytes(long.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture)),
+            ValueTypeKind.Float => BitConverter.GetBytes(float.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture)),
+            ValueTypeKind.Double => BitConverter.GetBytes(double.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture)),
+            _ => throw new ArgumentOutOfRangeException(nameof(type)),
+        };
 
-    internal static string Format(ReadOnlySpan<byte> bytes, ValueTypeKind type) => type switch
+        ApplyEndianness(bytes, endianness);
+        return bytes;
+    }
+
+    internal static string Format(ReadOnlySpan<byte> bytes, ValueTypeKind type, Endianness endianness)
     {
-        ValueTypeKind.uByte => bytes[0].ToString(CultureInfo.InvariantCulture),
-        ValueTypeKind.Byte => bytes[0].ToString(CultureInfo.InvariantCulture),
-        ValueTypeKind.UShort => BitConverter.ToUInt16(bytes).ToString(CultureInfo.InvariantCulture),
-        ValueTypeKind.Short => BitConverter.ToInt16(bytes).ToString(CultureInfo.InvariantCulture),
-        ValueTypeKind.UInt32 => BitConverter.ToUInt32(bytes).ToString(CultureInfo.InvariantCulture),
-        ValueTypeKind.Int32 => BitConverter.ToInt32(bytes).ToString(CultureInfo.InvariantCulture),
-        ValueTypeKind.ULong => BitConverter.ToUInt64(bytes).ToString(CultureInfo.InvariantCulture),
-        ValueTypeKind.Int64 => BitConverter.ToInt64(bytes).ToString(CultureInfo.InvariantCulture),
-        ValueTypeKind.Float => BitConverter.ToSingle(bytes).ToString("G9", CultureInfo.InvariantCulture),
-        ValueTypeKind.Double => BitConverter.ToDouble(bytes).ToString("G17", CultureInfo.InvariantCulture),
-        _ => throw new ArgumentOutOfRangeException(nameof(type)),
-    };
+        var nativeBytes = bytes.ToArray();
+        ApplyEndianness(nativeBytes, endianness);
+
+        return type switch
+        {
+            ValueTypeKind.uByte => nativeBytes[0].ToString(CultureInfo.InvariantCulture),
+            ValueTypeKind.Byte => nativeBytes[0].ToString(CultureInfo.InvariantCulture),
+            ValueTypeKind.UShort => BitConverter.ToUInt16(nativeBytes).ToString(CultureInfo.InvariantCulture),
+            ValueTypeKind.Short => BitConverter.ToInt16(nativeBytes).ToString(CultureInfo.InvariantCulture),
+            ValueTypeKind.UInt32 => BitConverter.ToUInt32(nativeBytes).ToString(CultureInfo.InvariantCulture),
+            ValueTypeKind.Int32 => BitConverter.ToInt32(nativeBytes).ToString(CultureInfo.InvariantCulture),
+            ValueTypeKind.ULong => BitConverter.ToUInt64(nativeBytes).ToString(CultureInfo.InvariantCulture),
+            ValueTypeKind.Int64 => BitConverter.ToInt64(nativeBytes).ToString(CultureInfo.InvariantCulture),
+            ValueTypeKind.Float => BitConverter.ToSingle(nativeBytes).ToString("G9", CultureInfo.InvariantCulture),
+            ValueTypeKind.Double => BitConverter.ToDouble(nativeBytes).ToString("G17", CultureInfo.InvariantCulture),
+            _ => throw new ArgumentOutOfRangeException(nameof(type)),
+        };
+    }
+
+    private static void ApplyEndianness(Span<byte> bytes, Endianness endianness)
+    {
+        var requestedLittleEndian = endianness == Endianness.LittleEndian;
+        if (bytes.Length > 1 && BitConverter.IsLittleEndian != requestedLittleEndian)
+            bytes.Reverse();
+    }
 }

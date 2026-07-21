@@ -17,6 +17,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _scanCancellation;
     private ProcessItem? _attachedProcess;
     private ValueTypeKind _scanType;
+    private Endianness _scanEndianness;
 
     public MainWindow()
     {
@@ -25,6 +26,8 @@ public partial class MainWindow : Window
         SavedGrid.ItemsSource = _savedAddresses;
         ValueTypeComboBox.ItemsSource = Enum.GetValues<ValueTypeKind>();
         ValueTypeComboBox.SelectedItem = ValueTypeKind.Int32;
+        EndiannessComboBox.ItemsSource = Enum.GetValues<Endianness>();
+        EndiannessComboBox.SelectedItem = Endianness.LittleEndian;
 
         var dataDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -77,21 +80,22 @@ public partial class MainWindow : Window
 
     private async void FirstScan_Click(object sender, RoutedEventArgs e)
     {
-        if (!TryPrepareScan(out var target, out var type))
+        if (!TryPrepareScan(out var target, out var type, out var endianness))
             return;
 
         _scanType = type;
+        _scanEndianness = endianness;
         var progress = new Progress<ScanProgress>(UpdateScanProgress);
         await RunScanAsync(token => _memory.FirstScan(target, progress, token));
     }
 
     private async void NextScan_Click(object sender, RoutedEventArgs e)
     {
-        if (!TryPrepareScan(out var target, out var type))
+        if (!TryPrepareScan(out var target, out var type, out var endianness))
             return;
-        if (type != _scanType)
+        if (type != _scanType || endianness != _scanEndianness)
         {
-            MessageBox.Show(this, "The value type must stay the same during a scan. Start a new scan to change it.", "Memory Scanner", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, "The value type and endianness must stay the same during a scan. Start a new scan to change them.", "Memory Scanner", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -99,10 +103,11 @@ public partial class MainWindow : Window
         await RunScanAsync(token => _memory.NextScan(candidates, target, token));
     }
 
-    private bool TryPrepareScan(out byte[] target, out ValueTypeKind type)
+    private bool TryPrepareScan(out byte[] target, out ValueTypeKind type, out Endianness endianness)
     {
         target = [];
         type = (ValueTypeKind)(ValueTypeComboBox.SelectedItem ?? ValueTypeKind.Int32);
+        endianness = (Endianness)(EndiannessComboBox.SelectedItem ?? Endianness.LittleEndian);
         if (!_memory.IsAttached)
         {
             MessageBox.Show(this, "Attach to a process first.", "Memory Scanner", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -111,7 +116,7 @@ public partial class MainWindow : Window
 
         try
         {
-            target = ValueConverter.Parse(ScanValueTextBox.Text, type);
+            target = ValueConverter.Parse(ScanValueTextBox.Text, type, endianness);
             return true;
         }
         catch (Exception ex) when (ex is FormatException or OverflowException)
@@ -169,7 +174,7 @@ public partial class MainWindow : Window
         foreach (var address in _candidateAddresses.Take(DisplayLimit))
         {
             var value = _memory.TryRead(address, size, out var bytes)
-                ? ValueConverter.Format(bytes, _scanType)
+                ? ValueConverter.Format(bytes, _scanType, _scanEndianness)
                 : "<unreadable>";
             _results.Add(new ScanResult { Address = address, Value = value });
         }
@@ -185,9 +190,9 @@ public partial class MainWindow : Window
 
         try
         {
-            var bytes = ValueConverter.Parse(WriteValueTextBox.Text, _scanType);
+            var bytes = ValueConverter.Parse(WriteValueTextBox.Text, _scanType, _scanEndianness);
             _memory.Write(result.Address, bytes);
-            result.Value = ValueConverter.Format(bytes, _scanType);
+            result.Value = ValueConverter.Format(bytes, _scanType, _scanEndianness);
             ResultsGrid.Items.Refresh();
             StatusTextBlock.Text = $"Wrote {result.Value} to {result.AddressText}";
         }
@@ -211,6 +216,7 @@ public partial class MainWindow : Window
             ProcessName = _attachedProcess.Name,
             Address = result.Address,
             ValueType = _scanType,
+            Endianness = _scanEndianness,
         });
         SaveSavedAddresses();
         StatusTextBlock.Text = $"Saved {result.AddressText}";
@@ -224,6 +230,8 @@ public partial class MainWindow : Window
         NextScanButton.IsEnabled = !scanning && _candidateAddresses.Count > 0;
         CancelScanButton.IsEnabled = scanning;
         ProcessComboBox.IsEnabled = !scanning;
+        ValueTypeComboBox.IsEnabled = !scanning;
+        EndiannessComboBox.IsEnabled = !scanning;
     }
 
     private void ResetScan()
